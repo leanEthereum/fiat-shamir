@@ -1,0 +1,9 @@
+[package]
+name = "fiat-shamir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-challenger = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
