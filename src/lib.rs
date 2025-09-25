@@ -14,6 +14,9 @@ pub use verifier::*;
 mod utils;
 pub use utils::*;
 
+mod wrappers;
+pub use wrappers::*;
+
 const LEAN_ISA_VECTOR_LEN: usize = 8;
 
 pub trait ChallengeSampler<F> {
