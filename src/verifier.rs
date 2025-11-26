@@ -13,6 +13,9 @@ pub struct VerifierState<F, EF, Challenger> {
     /// Cryptographic challenger used for sampling challenges and observing proof data.
     challenger: Challenger,
 
+    /// Indicates whether padding is used for alignment by LEAN_ISA_VECTOR_LEN (set to true for recursion)
+    padding: bool,
+
     /// Proof data buffer received from the prover, in base field elements.
     proof_data: Vec<F>,
 
@@ -46,6 +49,7 @@ where
             challenger,
             proof_data: proof.proof_data,
             index: 0,
+            padding: proof.padding,
             merkle_hints: proof.merkle_hints,
             _extension_field: std::marker::PhantomData,
         }
@@ -100,9 +104,16 @@ where
 
         let mut res = Vec::new();
         for _ in 0..n {
-            let base_scalars = self.next_base_scalars_const::<LEAN_ISA_VECTOR_LEN>()?;
-            assert!(base_scalars[extension_size..].iter().all(|&x| x == F::ZERO));
-            res.push(EF::from_basis_coefficients_slice(&base_scalars[..extension_size]).unwrap());
+            if self.padding {
+                let base_scalars = self.next_base_scalars_const::<LEAN_ISA_VECTOR_LEN>()?;
+                assert!(base_scalars[extension_size..].iter().all(|&x| x == F::ZERO));
+                res.push(
+                    EF::from_basis_coefficients_slice(&base_scalars[..extension_size]).unwrap(),
+                );
+            } else {
+                let base_scalars = self.next_base_scalars_vec(extension_size)?;
+                res.push(EF::from_basis_coefficients_slice(&base_scalars).unwrap());
+            }
         }
         Ok(res)
     }
@@ -202,14 +213,13 @@ where
             return Ok(());
         }
 
-        // Ensure there is at least one witness element to consume.
-        if self.index > self.proof_data.len() + LEAN_ISA_VECTOR_LEN {
+        // Ensure there is enough of witness elements to consume.
+        if self.index + if self.padding { LEAN_ISA_VECTOR_LEN } else { 1 } > self.proof_data.len() {
             return Err(ProofError::ExceededTranscript);
         }
 
-        // Consume the next witness element.
         let witness = self.proof_data[self.index];
-        self.index += LEAN_ISA_VECTOR_LEN;
+        self.index += if self.padding { LEAN_ISA_VECTOR_LEN } else { 1 };
 
         // Verify the witness using the challenger.
         if self.challenger.check_witness(bits, witness) {
