@@ -53,6 +53,7 @@ impl ChallengerState for DuplexChallenger<KoalaBear, Poseidon2KoalaBear<16>, 16,
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Proof<F> {
     pub proof_data: Vec<F>,
+    pub padding: bool,
     pub proof_size: usize,
     pub merkle_hints: VecDeque<Vec<[F; 8]>>,
 }
