@@ -67,6 +67,10 @@ where
         &self.proof_data
     }
 
+    pub fn has_padding(&self) -> bool {
+        self.padding
+    }
+
     pub fn proof_size(&self) -> usize {
         self.proof_data.len() - self.n_zeros
     }
