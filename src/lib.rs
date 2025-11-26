@@ -11,6 +11,7 @@ mod prover;
 pub use prover::*;
 
 mod verifier;
+use serde::{Deserialize, Serialize};
 pub use verifier::*;
 
 mod utils;
@@ -50,7 +51,7 @@ impl ChallengerState for DuplexChallenger<KoalaBear, Poseidon2KoalaBear<16>, 16,
 }
 
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Proof<F> {
     pub proof_data: Vec<F>,
     pub padding: bool,
