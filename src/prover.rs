@@ -18,6 +18,9 @@ pub struct ProverState<F, EF, Challenger> {
     /// to be sent to the verifier.
     proof_data: Vec<F>,
 
+    /// Indicates whether padding is used for alignment by LEAN_ISA_VECTOR_LEN (set to true for recursion)
+    padding: bool,
+
     // number of empty field elements, added to simplify the recursive proof, but could be removed to reduce proof size
     n_zeros: usize,
 
@@ -40,13 +43,14 @@ where
     /// # Returns
     /// A fresh `ProverState` ready to accumulate data.
     #[must_use]
-    pub fn new(challenger: Challenger) -> Self
+    pub fn new(challenger: Challenger, padding: bool) -> Self
     where
         Challenger: Clone,
     {
         Self {
             challenger,
             proof_data: Vec::new(),
+            padding,
             n_zeros: 0,
             _extension_field: std::marker::PhantomData,
         }
@@ -89,8 +93,10 @@ where
         // Flatten each extension scalar into base scalars and delegate.
         for ef in scalars {
             let mut base_scalars = ef.as_basis_coefficients_slice().to_vec();
-            self.n_zeros += LEAN_ISA_VECTOR_LEN - base_scalars.len();
-            base_scalars.resize(LEAN_ISA_VECTOR_LEN, F::ZERO);
+            if self.padding {
+                self.n_zeros += LEAN_ISA_VECTOR_LEN - base_scalars.len();
+                base_scalars.resize(LEAN_ISA_VECTOR_LEN, F::ZERO);
+            }
             self.add_base_scalars(&base_scalars);
         }
     }
@@ -164,9 +170,11 @@ where
 
         // Append the witness to the proof data.
         self.proof_data.push(witness);
-        for _ in 0..LEAN_ISA_VECTOR_LEN - 1 {
-            self.proof_data.push(F::ZERO);
-            self.n_zeros += 1;
+        if self.padding {
+            for _ in 0..LEAN_ISA_VECTOR_LEN - 1 {
+                self.proof_data.push(F::ZERO);
+                self.n_zeros += 1;
+            }
         }
     }
 }
