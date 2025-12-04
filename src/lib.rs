@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use p3_challenger::{DuplexChallenger, FieldChallenger, GrindingChallenger};
 use p3_field::Field;
 use p3_koala_bear::{KoalaBear, Poseidon2KoalaBear};
@@ -9,6 +11,7 @@ mod prover;
 pub use prover::*;
 
 mod verifier;
+use serde::{Deserialize, Serialize};
 pub use verifier::*;
 
 mod utils;
@@ -45,4 +48,13 @@ impl ChallengerState for DuplexChallenger<KoalaBear, Poseidon2KoalaBear<16>, 16,
     fn state(&self) -> String {
         format!("{:?}", self.sponge_state)
     }
+}
+
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Proof<F> {
+    pub proof_data: Vec<F>,
+    pub padding: bool,
+    pub proof_size: usize,
+    pub merkle_hints: VecDeque<Vec<[F; 8]>>,
 }

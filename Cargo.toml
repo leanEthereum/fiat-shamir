@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-challenger = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+serde = { version = "1.0.228", features = ["derive"] }
+p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-challenger = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }

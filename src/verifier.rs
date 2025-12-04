@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::*;
 use p3_challenger::{FieldChallenger, GrindingChallenger};
 use p3_field::{BasedVectorSpace, ExtensionField, Field};
@@ -16,6 +18,8 @@ pub struct VerifierState<F, EF, Challenger> {
 
     /// Proof data buffer received from the prover, in base field elements.
     proof_data: Vec<F>,
+
+    merkle_hints: VecDeque<Vec<[F; 8]>>,
 
     /// Current read index into `proof_data`.
     index: usize,
@@ -40,12 +44,13 @@ where
     /// # Returns
     /// A new `VerifierState` ready to consume proof data and derive challenges.
     #[must_use]
-    pub fn new(proof_data: Vec<F>, challenger: Challenger, padding: bool) -> Self {
+    pub fn new(proof: Proof<F>, challenger: Challenger) -> Self {
         Self {
             challenger,
-            proof_data,
-            padding,
+            proof_data: proof.proof_data,
             index: 0,
+            padding: proof.padding,
+            merkle_hints: proof.merkle_hints,
             _extension_field: std::marker::PhantomData,
         }
     }
@@ -147,6 +152,12 @@ where
         self.index += n;
 
         Ok(scalars)
+    }
+
+    pub fn receive_hint_merkle_path(&mut self) -> Result<Vec<[F; 8]>, ProofError> {
+        self.merkle_hints
+            .pop_front()
+            .ok_or(ProofError::ExceededTranscript)
     }
 
     /// Consume and return `n` extension scalars as hints (not observed by the challenger).
