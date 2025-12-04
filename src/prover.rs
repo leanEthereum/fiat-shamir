@@ -1,7 +1,7 @@
 use crate::*;
 use p3_challenger::{FieldChallenger, GrindingChallenger};
 use p3_field::{ExtensionField, Field};
-use std::{collections::VecDeque, fmt::Debug};
+use std::fmt::Debug;
 
 /// State held by the prover in a Fiat-Shamir protocol.
 ///
@@ -18,8 +18,6 @@ pub struct ProverState<F, EF, Challenger> {
     /// to be sent to the verifier.
     proof_data: Vec<F>,
 
-    merkle_hints: VecDeque<Vec<[F; 8]>>,
-    
     /// Indicates whether padding is used for alignment by LEAN_ISA_VECTOR_LEN (set to true for recursion)
     padding: bool,
 
@@ -52,7 +50,6 @@ where
         Self {
             challenger,
             proof_data: Vec::new(),
-            merkle_hints: VecDeque::new(),
             padding,
             n_zeros: 0,
             _extension_field: std::marker::PhantomData,
@@ -64,12 +61,7 @@ where
     }
 
     pub fn proof_size(&self) -> usize {
-        (self.proof_data.len() - self.n_zeros)
-            + self
-                .merkle_hints
-                .iter()
-                .map(|p| p.len() * LEAN_ISA_VECTOR_LEN)
-                .sum::<usize>()
+        self.proof_data.len() - self.n_zeros
     }
 
     pub fn into_proof(self) -> Proof<F> {
@@ -78,7 +70,6 @@ where
             proof_data: self.proof_data,
             padding: self.padding,
             proof_size,
-            merkle_hints: self.merkle_hints,
         }
     }
 
@@ -131,10 +122,6 @@ where
         assert!(scalars.len() % LEAN_ISA_VECTOR_LEN == 0);
         // Only extend proof data, no challenger observation.
         self.proof_data.extend(scalars);
-    }
-
-    pub fn hint_merkle_path(&mut self, path: Vec<[F; 8]>) {
-        self.merkle_hints.push_back(path);
     }
 
     /// Append extension field scalars to the transcript as hints.

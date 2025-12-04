@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use p3_challenger::{DuplexChallenger, FieldChallenger, GrindingChallenger};
 use p3_field::Field;
 use p3_koala_bear::{KoalaBear, Poseidon2KoalaBear};
@@ -56,5 +54,4 @@ pub struct Proof<F> {
     pub proof_data: Vec<F>,
     pub padding: bool,
     pub proof_size: usize,
-    pub merkle_hints: VecDeque<Vec<[F; 8]>>,
 }
