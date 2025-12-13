@@ -11,11 +11,9 @@ pub(crate) const RATE: usize = 8;
 
 #[derive(Clone, Debug)]
 pub struct DuplexChallenger<F, P> {
-    pub sponge_state: [F; WIDTH],
-
-    pub output_buffer: Option<[F; RATE]>,
-
     pub permutation: P,
+    pub sponge_state: [F; WIDTH],
+    pub has_sampled: bool,
 }
 
 impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<F, P> {
@@ -24,9 +22,9 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
         F: Default,
     {
         Self {
-            sponge_state: [F::default(); WIDTH],
-            output_buffer: None,
             permutation,
+            sponge_state: [F::ZERO; WIDTH],
+            has_sampled: false,
         }
     }
 
@@ -37,7 +35,7 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
             }
         }
         self.permutation.permute_mut(&mut self.sponge_state);
-        self.output_buffer = Some(self.sponge_state[..RATE].try_into().unwrap());
+        self.has_sampled = false;
     }
 
     pub fn observe(&mut self, value: [F; RATE]) {
@@ -45,10 +43,11 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
     }
 
     pub fn sample(&mut self) -> [F; RATE] {
-        if self.output_buffer.is_none() {
+        if self.has_sampled {
             self.duplexing(None);
         }
-        self.output_buffer.take().unwrap()
+        self.has_sampled = true;
+        self.sponge_state[..RATE].try_into().unwrap()
     }
 
     /// Warning: not perfectly uniform
