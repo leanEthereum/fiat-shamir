@@ -1,4 +1,4 @@
-use p3_field::{ExtensionField};
+use p3_field::ExtensionField;
 
 use crate::{PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
 
@@ -18,9 +18,7 @@ pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     fn hint_base_scalars(&mut self, scalars: &[PF<EF>]);
 
     fn add_extension_scalars(&mut self, scalars: &[EF]) {
-        for ef in scalars {
-            self.add_base_scalars(ef.as_basis_coefficients_slice());
-        }
+        self.add_base_scalars(&flatten_scalars_to_base(scalars));
     }
 
     fn add_extension_scalar(&mut self, scalar: EF) {
@@ -43,12 +41,9 @@ pub trait FSVerifier<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     }
 
     fn next_extension_scalars_vec(&mut self, n: usize) -> Result<Vec<EF>, ProofError> {
-        let mut res = Vec::with_capacity(n);
-        for _ in 0..n {
-            let base_scalars = self.next_base_scalars_vec(EF::DIMENSION)?;
-            res.push(EF::from_basis_coefficients_slice(&base_scalars).unwrap());
-        }
-        Ok(res)
+        Ok(pack_scalars_to_extension(
+            &self.next_base_scalars_vec(n * EF::DIMENSION)?,
+        ))
     }
 
     fn next_extension_scalars_const<const N: usize>(&mut self) -> Result<[EF; N], ProofError> {
