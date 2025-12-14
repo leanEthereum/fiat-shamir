@@ -8,12 +8,13 @@ use p3_field::integers::QuotientMap;
 use p3_field::{ExtensionField, PrimeField64};
 use p3_symmetric::CryptographicPermutation;
 use rayon::prelude::*;
-use std::fmt::Debug;
+use std::{fmt::Debug, iter::repeat_n};
 
 #[derive(Debug)]
 pub struct ProverState<EF: ExtensionField<PF<EF>>, P> {
     challenger: DuplexChallenger<PF<EF>, P>,
     transcript: Vec<PF<EF>>,
+    n_zeros: usize,
     _extension_field: std::marker::PhantomData<EF>,
 }
 
@@ -27,12 +28,13 @@ where
         Self {
             challenger: DuplexChallenger::new(permutation),
             transcript: Vec::new(),
+            n_zeros: 0,
             _extension_field: std::marker::PhantomData,
         }
     }
 
     pub fn proof_size_fe(&self) -> usize {
-        self.transcript.len()
+        self.transcript.len() - self.n_zeros
     }
 
     pub fn into_proof(self) -> Vec<PF<EF>> {
@@ -60,7 +62,10 @@ where
     PF<EF>: PrimeField64,
 {
     fn add_base_scalars(&mut self, scalars: &[PF<EF>]) {
-        self.transcript.extend(scalars);
+        let padding = scalars.len().next_multiple_of(RATE) - scalars.len();
+        self.transcript.extend_from_slice(scalars);
+        self.transcript.extend(repeat_n(PF::<EF>::ZERO, padding));
+        self.n_zeros += padding;
         for chunk in scalars.chunks(RATE) {
             let mut buffer = [PF::<EF>::ZERO; RATE];
             for (i, val) in chunk.iter().enumerate() {

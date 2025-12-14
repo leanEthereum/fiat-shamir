@@ -54,12 +54,12 @@ where
     }
 
     fn next_base_scalars_vec(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError> {
-        if n > self.transcript.len() - self.index {
+        let n_padded = n.next_multiple_of(RATE);
+        if n_padded > self.transcript.len() - self.index {
             return Err(ProofError::ExceededTranscript);
         }
-        let scalars = self.transcript[self.index..self.index + n].to_vec();
-        self.index += n;
-
+        let scalars = self.transcript[self.index..][..n].to_vec();
+        self.index += n_padded;
         for chunk in scalars.chunks(RATE) {
             let mut buffer = [PF::<EF>::ZERO; RATE];
             for (i, val) in chunk.iter().enumerate() {
