@@ -28,7 +28,7 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
         }
     }
 
-    fn duplexing(&mut self, input_buffer: Option<[F; RATE]>) {
+    pub(crate) fn duplexing(&mut self, input_buffer: Option<[F; RATE]>) {
         if let Some(input_buffer) = input_buffer {
             for (i, val) in input_buffer.into_iter().enumerate() {
                 self.sponge_state[i] = val;
@@ -43,9 +43,10 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
     }
 
     pub fn sample(&mut self) -> [F; RATE] {
-        if self.has_sampled {
-            self.duplexing(None);
-        }
+        assert!(
+            !self.has_sampled,
+            "Cannot sample twice without duplexing in between"
+        );
         self.has_sampled = true;
         self.sponge_state[..RATE].try_into().unwrap()
     }
@@ -64,6 +65,7 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
                     return samples;
                 }
             }
+            self.duplexing(None);
         }
     }
 }

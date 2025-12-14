@@ -35,6 +35,10 @@ impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> C
 where
     PF<EF>: PrimeField64,
 {
+    fn duplexing(&mut self) {
+        self.challenger.duplexing(None);
+    }
+
     fn sample(&mut self) -> EF {
         EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
     }

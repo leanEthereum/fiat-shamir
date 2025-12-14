@@ -3,11 +3,19 @@ use p3_field::ExtensionField;
 use crate::{PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
 
 pub trait ChallengeSampler<EF> {
+    fn duplexing(&mut self); // never sample twice without duplexing in between
     fn sample(&mut self) -> EF;
     fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize>;
 
     fn sample_vec(&mut self, len: usize) -> Vec<EF> {
-        (0..len).map(|_| self.sample()).collect()
+        let mut samples = Vec::with_capacity(len);
+        for i in 0..len {
+            samples.push(self.sample());
+            if i + 1 < len {
+                self.duplexing();
+            }
+        }
+        samples
     }
 }
 
