@@ -104,7 +104,6 @@ where
         if self.challenger.sample_in_range(bits, 1)[0] != 0 {
             return Err(ProofError::InvalidGrindingWitness);
         }
-        self.challenger.duplexing(None);
         Ok(())
     }
 }

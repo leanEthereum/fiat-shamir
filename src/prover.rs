@@ -113,7 +113,6 @@ where
             value
         });
         assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
-        self.challenger.duplexing(None);
         self.transcript.push(witness);
     }
 }
