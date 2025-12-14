@@ -51,8 +51,8 @@ where
         EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
     }
 
-    fn sample_bits(&mut self, bits: usize) -> usize {
-        self.challenger.sample_bits(bits)
+    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
+        self.challenger.sample_in_range(bits, n_samples)
     }
 }
 
@@ -99,7 +99,7 @@ where
                 let mut value = [PF::<EF>::ZERO; RATE];
                 value[0] = *witness;
                 challenger_clone.observe(value);
-                challenger_clone.sample_bits(bits) == 0
+                challenger_clone.sample_in_range(bits, 1)[0] == 0
             })
             .expect("failed to find witness");
 
@@ -108,7 +108,7 @@ where
             value[0] = witness;
             value
         });
-        assert!(self.challenger.sample_bits(bits) == 0);
+        assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
         self.transcript.push(witness);
     }
 }

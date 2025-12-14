@@ -51,9 +51,19 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
     }
 
     /// Warning: not perfectly uniform
-    pub fn sample_bits(&mut self, bits: usize) -> usize {
+    pub fn sample_in_range(&mut self, bits: usize, mut n_samples: usize) -> Vec<usize> {
         assert!(bits < F::bits());
-        let rand_usize = self.sample()[0].as_canonical_u64() as usize;
-        rand_usize & ((1 << bits) - 1)
+        let mut samples = Vec::with_capacity(n_samples);
+        loop {
+            let chunks = self.sample();
+            for &chunk in &chunks {
+                let rand_usize = chunk.as_canonical_u64() as usize;
+                samples.push(rand_usize & ((1 << bits) - 1));
+                n_samples -= 1;
+                if n_samples == 0 {
+                    return samples;
+                }
+            }
+        }
     }
 }

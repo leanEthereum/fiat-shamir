@@ -39,8 +39,8 @@ where
         EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
     }
 
-    fn sample_bits(&mut self, bits: usize) -> usize {
-        self.challenger.sample_bits(bits)
+    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
+        self.challenger.sample_in_range(bits, n_samples)
     }
 }
 
@@ -97,7 +97,7 @@ where
             value[0] = witness;
             value
         });
-        if self.challenger.sample_bits(bits) != 0 {
+        if self.challenger.sample_in_range(bits, 1)[0] != 0 {
             return Err(ProofError::InvalidGrindingWitness);
         }
         Ok(())

@@ -4,7 +4,7 @@ use crate::{PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
 
 pub trait ChallengeSampler<EF> {
     fn sample(&mut self) -> EF;
-    fn sample_bits(&mut self, bits: usize) -> usize;
+    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize>;
 
     fn sample_vec(&mut self, len: usize) -> Vec<EF> {
         (0..len).map(|_| self.sample()).collect()
