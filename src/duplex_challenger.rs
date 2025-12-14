@@ -57,6 +57,7 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
         let mut samples = Vec::with_capacity(n_samples);
         loop {
             let chunks = self.sample();
+            self.duplexing(None);
             for &chunk in &chunks {
                 let rand_usize = chunk.as_canonical_u64() as usize;
                 samples.push(rand_usize & ((1 << bits) - 1));
@@ -65,7 +66,6 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
                     return samples;
                 }
             }
-            self.duplexing(None);
         }
     }
 }
