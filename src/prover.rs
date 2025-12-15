@@ -37,6 +37,10 @@ where
         self.transcript.len() - self.n_zeros
     }
 
+    pub fn proof(&self) -> &[PF<EF>] {
+        &self.transcript
+    }
+
     pub fn into_proof(self) -> Vec<PF<EF>> {
         self.transcript
     }
