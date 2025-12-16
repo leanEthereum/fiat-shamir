@@ -3,6 +3,7 @@ use crate::{
     *,
 };
 use p3_field::Field;
+use p3_field::PackedValue;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::integers::QuotientMap;
 use p3_field::{ExtensionField, PrimeField64};
@@ -64,8 +65,11 @@ where
     }
 }
 
-impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> FSProver<EF>
-    for ProverState<EF, P>
+impl<
+    EF: ExtensionField<PF<EF>>,
+    P: CryptographicPermutation<[PF<EF>; WIDTH]>
+        + CryptographicPermutation<[<PF<EF> as Field>::Packing; WIDTH]>,
+> FSProver<EF> for ProverState<EF, P>
 where
     PF<EF>: PrimeField64,
 {
@@ -91,7 +95,6 @@ where
         self.transcript.extend(scalars);
     }
 
-    // TODO SIMD
     fn pow_grinding(&mut self, bits: usize) {
         assert!(bits < PF::<EF>::bits());
 
@@ -99,24 +102,91 @@ where
             return;
         }
 
-        let witness = (0..PF::<EF>::ORDER_U64)
+        type Packed<EF> = <PF<EF> as Field>::Packing;
+        let lanes = Packed::<EF>::WIDTH;
+
+        // each batch tests lanes witnesses simultaneously
+        let num_batches = (PF::<EF>::ORDER_U64 + lanes as u64 - 1) / lanes as u64;
+        let witness = (0..num_batches)
             .into_par_iter()
-            .map(|i| unsafe { PF::<EF>::from_canonical_unchecked(i) })
-            .find_any(|witness| {
-                let mut challenger_clone = self.challenger.clone();
-                let mut value = [PF::<EF>::ZERO; RATE];
-                value[0] = *witness;
-                challenger_clone.observe(value);
-                challenger_clone.sample_in_range(bits, 1)[0] == 0
+            .find_any(|&batch| {
+                let base = batch * lanes as u64;
+
+                let packed_witnesses = Packed::<EF>::from_fn(|lane| {
+                    let candidate = base + lane as u64;
+                    if candidate < PF::<EF>::ORDER_U64 {
+                        unsafe { PF::<EF>::from_canonical_unchecked(candidate) }
+                    } else {
+                        PF::<EF>::ZERO
+                    }
+                });
+
+                let mut packed_state: [Packed<EF>; WIDTH] = std::array::from_fn(|i| {
+                    if i == 0 {
+                        packed_witnesses
+                    } else if i < RATE {
+                        Packed::<EF>::from(PF::<EF>::ZERO)
+                    } else {
+                        Packed::<EF>::from(self.challenger.sponge_state[i])
+                    }
+                });
+
+                self.challenger.permutation.permute_mut(&mut packed_state);
+
+                let samples = packed_state[0].as_slice();
+                for sample in samples {
+                    let rand_usize = sample.as_canonical_u64() as usize;
+                    if (rand_usize & ((1 << bits) - 1)) == 0 {
+                        return true;
+                    }
+                }
+                false
             })
             .expect("failed to find witness");
 
+        // winning batch to find exact witness
+        let base = witness * lanes as u64;
+        let packed_witnesses = Packed::<EF>::from_fn(|lane| {
+            let candidate = base + lane as u64;
+            if candidate < PF::<EF>::ORDER_U64 {
+                unsafe { PF::<EF>::from_canonical_unchecked(candidate) }
+            } else {
+                PF::<EF>::ZERO
+            }
+        });
+
+        let mut packed_state: [Packed<EF>; WIDTH] = std::array::from_fn(|i| {
+            if i == 0 {
+                packed_witnesses
+            } else if i < RATE {
+                Packed::<EF>::from(PF::<EF>::ZERO)
+            } else {
+                Packed::<EF>::from(self.challenger.sponge_state[i])
+            }
+        });
+        self.challenger.permutation.permute_mut(&mut packed_state);
+
+        let samples = packed_state[0].as_slice();
+        let exact_witness = samples
+            .iter()
+            .enumerate()
+            .find_map(|(lane, sample)| {
+                let candidate = base + lane as u64;
+                let rand_usize = sample.as_canonical_u64() as usize;
+                if (rand_usize & ((1 << bits) - 1)) == 0 && candidate < PF::<EF>::ORDER_U64 {
+                    Some(unsafe { PF::<EF>::from_canonical_unchecked(candidate) })
+                } else {
+                    None
+                }
+            })
+            .expect("witness not found in batch");
+
         self.challenger.observe({
             let mut value = [PF::<EF>::ZERO; RATE];
-            value[0] = witness;
+            value[0] = exact_witness;
             value
         });
         assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
-        self.transcript.push(witness);
+        self.transcript.push(exact_witness);
     }
 }
