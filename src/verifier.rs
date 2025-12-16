@@ -63,6 +63,12 @@ where
             return Err(ProofError::ExceededTranscript);
         }
         let scalars = self.transcript[self.index..][..n].to_vec();
+        if self.transcript[self.index + n..self.index + n_padded]
+            .iter()
+            .any(|&x| x != PF::<EF>::ZERO)
+        {
+            return Err(ProofError::InvalidPadding);
+        }
         self.index += n_padded;
         for chunk in scalars.chunks(RATE) {
             let mut buffer = [PF::<EF>::ZERO; RATE];

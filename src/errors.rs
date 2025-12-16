@@ -29,6 +29,8 @@ pub enum ProofError {
     ExceededTranscript,
     /// Invalid Pow Grinding
     InvalidGrindingWitness,
+    /// Invalid Padding in the transcript
+    InvalidPadding,
 }
 
 /// The result type when trying to prove or verify a proof using Fiat-Shamir.
@@ -40,6 +42,7 @@ impl Display for ProofError {
             Self::InvalidProof => write!(f, "Invalid proof"),
             Self::ExceededTranscript => write!(f, "Verifier exceeded transcript length"),
             Self::InvalidGrindingWitness => write!(f, "Invalid grinding witness"),
+            Self::InvalidPadding => write!(f, "Invalid padding in the transcript"),
         }
     }
 }
