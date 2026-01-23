@@ -1,4 +1,6 @@
-use p3_field::{BasedVectorSpace, ExtensionField, Field};
+use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing};
+
+pub(crate) type PF<F> = <F as PrimeCharacteristicRing>::PrimeSubfield;
 
 pub fn flatten_scalars_to_base<F: Field, EF: ExtensionField<F>>(scalars: &[EF]) -> Vec<F> {
     scalars

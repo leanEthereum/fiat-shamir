@@ -1,218 +1,153 @@
-use crate::*;
-use p3_challenger::{FieldChallenger, GrindingChallenger};
-use p3_field::{ExtensionField, Field};
-use std::{collections::VecDeque, fmt::Debug};
+use crate::{
+    duplex_challenger::{DuplexChallenger, RATE, WIDTH},
+    *,
+};
+use p3_field::Field;
+use p3_field::PackedValue;
+use p3_field::PrimeCharacteristicRing;
+use p3_field::integers::QuotientMap;
+use p3_field::{ExtensionField, PrimeField64};
+use p3_symmetric::CryptographicPermutation;
+use rayon::prelude::*;
+use std::{fmt::Debug, iter::repeat_n, sync::Mutex};
 
-/// State held by the prover in a Fiat-Shamir protocol.
-///
-/// This struct tracks the prover's transcript data and manages interaction
-/// with a cryptographic challenger. It collects data to be sent to the verifier,
-/// maintains the current transcript for challenge derivation, and supports
-/// hints and proof-of-work (PoW) grinding mechanisms.
 #[derive(Debug)]
-pub struct ProverState<F, EF, Challenger> {
-    /// Cryptographic challenger used to sample challenges and observe data.
-    challenger: Challenger,
-
-    /// Transcript data (proof data) accumulated during protocol execution,
-    /// to be sent to the verifier.
-    proof_data: Vec<F>,
-
-    merkle_hints: VecDeque<Vec<[F; 8]>>,
-    
-    /// Indicates whether padding is used for alignment by LEAN_ISA_VECTOR_LEN (set to true for recursion)
-    padding: bool,
-
-    // number of empty field elements, added to simplify the recursive proof, but could be removed to reduce proof size
+pub struct ProverState<EF: ExtensionField<PF<EF>>, P> {
+    challenger: DuplexChallenger<PF<EF>, P>,
+    transcript: Vec<PF<EF>>,
     n_zeros: usize,
-
-    /// Marker to keep track of the extension field type without storing it explicitly.
     _extension_field: std::marker::PhantomData<EF>,
 }
 
-impl<F, EF, Challenger> ProverState<F, EF, Challenger>
+impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> ProverState<EF, P>
 where
-    EF: ExtensionField<F>,
-    F: Field,
-    Challenger: FieldChallenger<F> + GrindingChallenger<Witness = F>,
+    PF<EF>: PrimeField64,
 {
-    /// Create a new prover state with a given domain separator and challenger.
-    ///
-    /// # Arguments
-    /// - `domain_separator`: Used to bind this transcript to a specific protocol context.
-    /// - `challenger`: The initial cryptographic challenger state.
-    ///
-    /// # Returns
-    /// A fresh `ProverState` ready to accumulate data.
     #[must_use]
-    pub fn new(challenger: Challenger, padding: bool) -> Self
-    where
-        Challenger: Clone,
-    {
+    pub fn new(permutation: P) -> Self {
+        assert!(EF::DIMENSION <= RATE);
         Self {
-            challenger,
-            proof_data: Vec::new(),
-            merkle_hints: VecDeque::new(),
-            padding,
+            challenger: DuplexChallenger::new(permutation),
+            transcript: Vec::new(),
             n_zeros: 0,
             _extension_field: std::marker::PhantomData,
         }
     }
 
-    pub fn challenger(&self) -> &Challenger {
-        &self.challenger
+    pub fn proof_size_fe(&self) -> usize {
+        self.transcript.len() - self.n_zeros
     }
 
-    pub fn proof_size(&self) -> usize {
-        (self.proof_data.len() - self.n_zeros)
-            + self
-                .merkle_hints
-                .iter()
-                .map(|p| p.len() * LEAN_ISA_VECTOR_LEN)
-                .sum::<usize>()
+    pub fn proof(&self) -> &[PF<EF>] {
+        &self.transcript
     }
 
-    pub fn has_padding(&self) -> bool {
-        self.padding
+    pub fn into_proof(self) -> Vec<PF<EF>> {
+        self.transcript
+    }
+}
+
+impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> ChallengeSampler<EF>
+    for ProverState<EF, P>
+where
+    PF<EF>: PrimeField64,
+{
+    fn duplexing(&mut self) {
+        self.challenger.duplexing(None);
     }
 
-    pub fn into_proof(self) -> Proof<F> {
-        let proof_size = self.proof_size();
-        Proof {
-            proof_data: self.proof_data,
-            padding: self.padding,
-            proof_size,
-            merkle_hints: self.merkle_hints,
-        }
+    fn sample(&mut self) -> EF {
+        EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
     }
 
-    /// Append base field scalars to the transcript and observe them in the challenger.
-    ///
-    /// # Arguments
-    /// - `scalars`: Slice of base field elements to append.
-    pub fn add_base_scalars(&mut self, scalars: &[F]) {
-        // Extend the proof data vector with these scalars.
-        self.proof_data.extend(scalars);
-
-        // Notify the challenger that these scalars have been committed.
-        self.challenger.observe_slice(scalars);
+    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
+        self.challenger.sample_in_range(bits, n_samples)
     }
+}
 
-    /// Append extension field scalars to the transcript.
-    ///
-    /// Internally, these are flattened to base field scalars.
-    ///
-    /// # Arguments
-    /// - `scalars`: Slice of extension field elements to append.
-    pub fn add_extension_scalars(&mut self, scalars: &[EF]) {
-        // Flatten each extension scalar into base scalars and delegate.
-        for ef in scalars {
-            let mut base_scalars = ef.as_basis_coefficients_slice().to_vec();
-            if self.padding {
-                self.n_zeros += LEAN_ISA_VECTOR_LEN - base_scalars.len();
-                base_scalars.resize(LEAN_ISA_VECTOR_LEN, F::ZERO);
+impl<
+    EF: ExtensionField<PF<EF>>,
+    P: CryptographicPermutation<[PF<EF>; WIDTH]>
+        + CryptographicPermutation<[<PF<EF> as Field>::Packing; WIDTH]>,
+> FSProver<EF> for ProverState<EF, P>
+where
+    PF<EF>: PrimeField64,
+{
+    fn add_base_scalars(&mut self, scalars: &[PF<EF>]) {
+        let padding = scalars.len().next_multiple_of(RATE) - scalars.len();
+        self.transcript.extend_from_slice(scalars);
+        self.transcript.extend(repeat_n(PF::<EF>::ZERO, padding));
+        self.n_zeros += padding;
+        for chunk in scalars.chunks(RATE) {
+            let mut buffer = [PF::<EF>::ZERO; RATE];
+            for (i, val) in chunk.iter().enumerate() {
+                buffer[i] = *val;
             }
-            self.add_base_scalars(&base_scalars);
+            self.challenger.observe(buffer);
         }
     }
 
-    /// Append a single extension field scalar to the transcript.
-    ///
-    /// # Arguments
-    /// - `scalar`: Extension field element to append.
-    pub fn add_extension_scalar(&mut self, scalar: EF) {
-        // Call the multi-scalar function with a one-element slice.
-        self.add_extension_scalars(&[scalar]);
+    fn state(&self) -> String {
+        format!("{:?}", self.challenger.sponge_state)
     }
 
-    /// Append base field scalars to the transcript as hints.
-    ///
-    /// Unlike `add_base_scalars`, hints are not observed by the challenger.
-    ///
-    /// # Arguments
-    /// - `scalars`: Slice of base field elements to append.
-    pub fn hint_base_scalars(&mut self, scalars: &[F]) {
-        assert!(scalars.len() % LEAN_ISA_VECTOR_LEN == 0);
-        // Only extend proof data, no challenger observation.
-        self.proof_data.extend(scalars);
+    fn hint_base_scalars(&mut self, scalars: &[PF<EF>]) {
+        self.transcript.extend(scalars);
     }
 
-    pub fn hint_merkle_path(&mut self, path: Vec<[F; 8]>) {
-        self.merkle_hints.push_back(path);
-    }
+    fn pow_grinding(&mut self, bits: usize) {
+        assert!(bits < PF::<EF>::bits());
 
-    /// Append extension field scalars to the transcript as hints.
-    ///
-    /// # Arguments
-    /// - `scalars`: Slice of extension field elements to append.
-    pub fn hint_extension_scalars(&mut self, scalars: &[EF]) {
-        assert!(scalars.len() % LEAN_ISA_VECTOR_LEN == 0);
-        // Flatten extension field scalars and append as base field scalars.
-        self.proof_data.extend(flatten_scalars_to_base(scalars));
-    }
-
-    /// Sample a new random extension field element from the challenger.
-    ///
-    /// # Returns
-    /// A new challenge element in the extension field.
-    pub fn sample(&mut self) -> EF {
-        self.challenger.sample_algebra_element()
-    }
-
-    pub fn sample_vec(&mut self, len: usize) -> Vec<EF> {
-        (0..len).map(|_| self.sample()).collect()
-    }
-
-    /// Sample random bits from the challenger.
-    ///
-    /// # Arguments
-    /// - `bits`: Number of bits to sample.
-    ///
-    /// # Returns
-    /// A uniformly random value with `bits` bits.
-    pub fn sample_bits(&mut self, bits: usize) -> usize {
-        self.challenger.sample_bits(bits)
-    }
-
-    /// Perform PoW grinding and append the witness to the transcript.
-    ///
-    /// # Arguments
-    /// - `bits`: Number of bits of grinding difficulty. If zero, no grinding is performed.
-    pub fn pow_grinding(&mut self, bits: usize) {
-        // Skip grinding entirely if difficulty is zero.
         if bits == 0 {
             return;
         }
 
-        // Perform grinding and obtain a witness element in the base field.
-        let witness = self.challenger.grind(bits);
+        type Packed<EF> = <PF<EF> as Field>::Packing;
+        let lanes = Packed::<EF>::WIDTH;
 
-        // Append the witness to the proof data.
-        self.proof_data.push(witness);
-        if self.padding {
-            for _ in 0..LEAN_ISA_VECTOR_LEN - 1 {
-                self.proof_data.push(F::ZERO);
-                self.n_zeros += 1;
-            }
-        }
-    }
-}
+        let witness_found = Mutex::<Option<PF<EF>>>::new(None);
+        // each batch tests lanes witnesses simultaneously
+        let num_batches = (PF::<EF>::ORDER_U64 + lanes as u64 - 1) / lanes as u64;
+        (0..num_batches)
+            .into_par_iter()
+            .find_any(|&batch| {
+                let base = batch * lanes as u64;
 
-impl<F, EF, Challenger> ChallengeSampler<EF> for ProverState<F, EF, Challenger>
-where
-    EF: ExtensionField<F>,
-    F: Field,
-    Challenger: FieldChallenger<F> + GrindingChallenger<Witness = F>,
-{
-    fn sample_bits(&mut self, bits: usize) -> usize {
-        self.sample_bits(bits)
-    }
+                let packed_witnesses = Packed::<EF>::from_fn(|lane| {
+                    let candidate = base + lane as u64;
+                    assert!(candidate < PF::<EF>::ORDER_U64);
+                    unsafe { PF::<EF>::from_canonical_unchecked(candidate) }
+                });
 
-    fn sample(&mut self) -> EF {
-        self.sample()
-    }
+                let mut packed_state = [Packed::<EF>::ZERO; WIDTH];
+                packed_state[0] = packed_witnesses;
+                packed_state[RATE..]
+                    .iter_mut()
+                    .zip(&self.challenger.sponge_state[RATE..])
+                    .for_each(|(val, state)| *val = Packed::<EF>::from(*state));
 
-    fn sample_vec(&mut self, len: usize) -> Vec<EF> {
-        self.sample_vec(len)
+                self.challenger.permutation.permute_mut(&mut packed_state);
+
+                let samples = packed_state[0].as_slice();
+                for (sample, witness) in samples.iter().zip(packed_witnesses.as_slice()) {
+                    let rand_usize = sample.as_canonical_u64() as usize;
+                    if (rand_usize & ((1 << bits) - 1)) == 0 {
+                        *witness_found.lock().unwrap() = Some(*witness);
+                        return true;
+                    }
+                }
+                false
+            })
+            .expect("failed to find witness");
+
+        let witness_found = witness_found.lock().unwrap().unwrap();
+
+        self.challenger.observe({
+            let mut value = [PF::<EF>::ZERO; RATE];
+            value[0] = witness_found;
+            value
+        });
+        assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
+        self.transcript.push(witness_found);
     }
 }
