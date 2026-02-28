@@ -24,14 +24,18 @@ where
     PF<EF>: PrimeField64,
 {
     #[must_use]
-    pub fn new(permutation: P) -> Self {
+    pub fn new(permutation: P, public_inputs: &[PF<EF>]) -> Self {
         assert!(EF::DIMENSION <= RATE);
-        Self {
+        let mut state = Self {
             challenger: DuplexChallenger::new(permutation),
             transcript: Vec::new(),
             n_zeros: 0,
             _extension_field: std::marker::PhantomData,
+        };
+        if !public_inputs.is_empty() {
+            state.add_base_scalars(public_inputs);
         }
+        state
     }
 
     pub fn proof_size_fe(&self) -> usize {

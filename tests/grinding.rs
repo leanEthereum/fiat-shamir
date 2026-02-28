@@ -12,7 +12,7 @@ type EF = QuinticExtensionFieldKB;
 fn bench_grinding() {
     let n_reps = 100;
     for grinding_bits in [5, 10, 15, 20] {
-        let mut prover_state = ProverState::<EF, _>::new(get_poseidon16());
+        let mut prover_state = ProverState::<EF, _>::new(get_poseidon16(), &[]);
         let time = Instant::now();
         for _ in 0..n_reps {
             prover_state.pow_grinding(grinding_bits);
