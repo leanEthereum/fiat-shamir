@@ -42,6 +42,12 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
         self.duplexing(Some(value));
     }
 
+    /// Returns `RATE` uniformly random field elements from the sponge state.
+    ///
+    /// Each element is uniform in `[0, P)` where `P` is the field modulus.
+    /// For KoalaBear (`P = 2^31 - 2^24 + 1`), values in `[P, 2^31)` are never
+    /// output since the permutation operates over `F_p`. This is correct for
+    /// generating field challenges — no bias exists within the field.
     pub fn sample(&mut self) -> [F; RATE] {
         assert!(
             !self.has_sampled,
@@ -51,7 +57,16 @@ impl<F: PrimeField64, P: CryptographicPermutation<[F; WIDTH]>> DuplexChallenger<
         self.sponge_state[..RATE].try_into().unwrap()
     }
 
-    /// Warning: not perfectly uniform
+    /// Samples integers in `[0, 2^bits)` by masking field elements.
+    ///
+    /// **Bias analysis:** Each sample masks a uniform `[0, P)` field element to `bits` bits.
+    /// For KoalaBear (`P = 2^31 - 2^24 + 1`):
+    /// - `bits <= 24`: perfectly uniform — `P mod 2^b = 1` for all `b <= 24`, giving
+    ///   each residue either `floor(P / 2^b)` or `ceil(P / 2^b)` hits (differ by 1).
+    /// - `bits 25..30`: bias ≤ `2^bits / P < 1/2`, negligible for STIR query sampling.
+    /// - `bits = 31`: excluded by `assert!(bits < F::bits())`.
+    ///
+    /// Used by WHIR's STIR queries where `bits = log2(folded_domain_size)`, typically ≤ 20.
     pub fn sample_in_range(&mut self, bits: usize, mut n_samples: usize) -> Vec<usize> {
         assert!(bits < F::bits());
         let mut samples = Vec::with_capacity(n_samples);
